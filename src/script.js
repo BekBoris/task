@@ -19,6 +19,10 @@ const setDimensionButton = document.getElementById('set-dimension');
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(0xf5f5f5)
 
+    //Axis Helper
+    const axisHelper = new THREE.AxisHelper(20)
+    scene.add(axisHelper)
+
     /**
      * Sizes
      */
@@ -106,15 +110,9 @@ const setDimensionButton = document.getElementById('set-dimension');
      * Cube
      */
 
-    // Cube Parent Group
-    const cube = new THREE.Group()
-    scene.add(cube)
-
+    const height = 0.8
     // Geometry
-    const geometry = new THREE.BoxGeometry(1, 1, 1, 100, 100, 100)
-
-    width.value = 1
-    depth.value = 1
+    const geometry = new THREE.BoxGeometry(1, height, 1, 100, 100, 100)
 
     // Material
     const materials = [
@@ -140,22 +138,22 @@ const setDimensionButton = document.getElementById('set-dimension');
         })
     }
 
-    const mesh = new THREE.Mesh(geometry, materials)
-    cube.add(mesh)
-    cube.scale.y = 0.8
-    cube.position.y = 0.4
+    const cube = new THREE.Mesh(geometry, materials)
+    scene.add(cube)
 
-    let prevScale = 1
     let moveToFront = false
     let moveToLeft = false
 
     const setDimension = () => {
-        const keys = Object.keys(texturesData);
+        if (moveToLeft || moveToFront) return
+
         const widthValue = width.value
         const depthValue = depth.value
+        const newGeometry = new THREE.BoxGeometry(widthValue, height, depthValue, 100, 100, 100)
+        cube.geometry.dispose()
+        cube.geometry = newGeometry
 
-        cube.scale.x = widthValue
-        cube.scale.z = depthValue
+        const keys = Object.keys(texturesData);
 
         keys.forEach(key => {
             materials[2][key].repeat.x = widthValue
@@ -169,81 +167,54 @@ const setDimensionButton = document.getElementById('set-dimension');
             materials[4][key].repeat.y = depthValue
         })
 
-        if(moveToLeft || moveToFront) return
-        const maxSide = getBoundingMaxSize()
-        setCameraDistance(maxSide, prevScale)
     }
 
     setDimensionButton.addEventListener('click', setDimension)
 
+    let vectorFront, vectorLeft
+    const fov = camera.fov * Math.PI / 180;
+    const fovH = 2 * Math.atan(Math.tan(fov / 2) * camera.aspect); // radians angle
 
-    const vectorFront = new THREE.Vector3(0, 5,5)
-    const vectorLeft = new THREE.Vector3(-5, 5,0)
+    const depthHeight = height / 2 / Math.tan(fov / 2)
 
     const moveCameraFront = () => {
-        vectorFront.normalize()
-        const maxSide = getBoundingMaxSize()
-        vectorFront.multiplyScalar(maxSide * 1.3)
-        if(moveToLeft) return
+        vectorFront = new THREE.Vector3()
+
+        const depthWidth = width.value / 2 / Math.tan(fovH / 2)
+
+        if (depthHeight > depthWidth) {
+            vectorFront.z = depthHeight + depth.value / 2
+        } else {
+            vectorFront.z = depthWidth + depth.value / 2
+        }
+
+        if (moveToLeft) return
         moveToFront = true
     }
 
-    moveFrontButton.addEventListener('click', moveCameraFront )
-
     const moveCameraLeft = () => {
-        vectorLeft.normalize()
-        const maxSide = getBoundingMaxSize()
-        vectorLeft.multiplyScalar(maxSide * 1.5)
-        if(moveToFront) return
+        vectorLeft = new THREE.Vector3()
+
+        const depthWidth = depth.value / 2 / Math.tan(fovH / 2)
+
+        if (depthHeight > depthWidth) {
+            vectorLeft.x = -(depthHeight + width.value / 2)
+        } else {
+            vectorLeft.x = -(depthWidth + width.value / 2)
+        }
+
+        if (moveToFront) return
         moveToLeft = true
     }
 
-    moveLeftButton.addEventListener('click', moveCameraLeft )
-
-
-    const getBoundingMaxSize = () => {
-        const box = new THREE.Box3().setFromObject(cube)
-        const vector = new THREE.Vector3()
-        box.getSize(vector)
-        const maxVal = Math.max(vector.x, vector.y, vector.z)
-        return maxVal
-    }
-
-    const setCameraDistance = (val, prevScaleAxis) => {
-        const currentCameraPosition = new THREE.Vector3
-        currentCameraPosition.copy(camera.position)
-        currentCameraPosition.y = 0
-        currentCameraPosition.normalize()
-        camera.position.add(currentCameraPosition.multiplyScalar((val-prevScaleAxis)))
-        prevScale = val
-    }
-
-    /**
-     * Floor
-     */
-
-    // Floor greed
-    const size = 15;
-    const divisions = 15;
-
-    const gridHelper = new THREE.GridHelper(size, divisions);
-    scene.add(gridHelper);
-
-    // Floor Plane
-    const floor = new THREE.Mesh(
-        new THREE.PlaneGeometry(size, size),
-        new THREE.MeshStandardMaterial({color: 0x000000, side: THREE.DoubleSide})
-    )
-    floor.rotation.x = -Math.PI * 0.5
-    floor.position.y = -0.01
-    scene.add(floor)
-
+    moveFrontButton.addEventListener('click', moveCameraFront)
+    moveLeftButton.addEventListener('click', moveCameraLeft)
 
     /**
      * Lights
      */
 
-    // Ambient Light
+        // Ambient Light
     const ambLight = new THREE.AmbientLight('#ffffff', 1)
     scene.add(ambLight)
 
@@ -256,6 +227,7 @@ const setDimensionButton = document.getElementById('set-dimension');
      * Resize Event Listener
      */
     window.addEventListener('resize', () => {
+
         // Update sizes
         sizes.width = window.innerWidth
         sizes.height = window.innerHeight
@@ -291,16 +263,16 @@ const setDimensionButton = document.getElementById('set-dimension');
         const delta = elapsedTime - prevTime
         prevTime = elapsedTime
 
-        if(moveToFront && !moveToLeft){
-            controls.object.position.lerp(vectorFront, delta)
-            if(vectorFront.distanceTo(controls.object.position) < 0.09){
+        if (moveToFront && !moveToLeft) {
+            controls.object.position.lerp(vectorFront, delta * 10)
+            if (vectorFront.distanceTo(controls.object.position) < 0.0001) {
                 moveToFront = false
             }
         }
 
-        if(moveToLeft && !moveToFront){
-            controls.object.position.lerp(vectorLeft, delta)
-            if(vectorLeft.distanceTo(controls.object.position) < 0.09){
+        if (moveToLeft && !moveToFront) {
+            controls.object.position.lerp(vectorLeft, delta * 10)
+            if (vectorLeft.distanceTo(controls.object.position) < 0.0001) {
                 moveToLeft = false
             }
         }
